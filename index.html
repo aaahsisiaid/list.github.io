@@ -1,211 +1,162 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>訪問者リスト</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>位置情報リストと削除機能</title>
 
-  <!-- Firebase -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js";
-    import { getFirestore, collection, getDocs, doc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js";
+  <script src="https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
 
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: #000;
+      color: #ccc;
+      margin: 0;
+      padding: 0;
+    }
+    #visitorList {
+      margin: 20px;
+      padding: 0;
+      list-style-type: none;
+    }
+    .visitorItem {
+      background-color: #333;
+      border-radius: 6px;
+      margin: 10px 0;
+      padding: 10px;
+    }
+    button {
+      background-color: red;
+      color: white;
+      border: none;
+      padding: 5px;
+      cursor: pointer;
+    }
+    label {
+      color: white;
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div>
+    <label><input type="checkbox" id="filterWithLocation"> 位置情報あり</label>
+    <label><input type="checkbox" id="filterWithoutLocation"> 位置情報なし</label>
+  </div>
+
+  <ul id="visitorList"></ul>
+
+  <script>
+    // Firebase設定
     const firebaseConfig = {
       apiKey: "AIzaSyADQyGZQ2qtzeX4C0Ne4cCKA_mT0PFsPn4",
       authDomain: "ipphone-c4de8.firebaseapp.com",
       projectId: "ipphone-c4de8",
-      storageBucket: "ipphone-c4de8.appspot.com",
+      storageBucket: "ipphone-c4de8.firebasestorage.app",
       messagingSenderId: "937358791870",
       appId: "1:937358791870:web:3f2a4c54ba8b63e0457aef",
       measurementId: "G-2B0DFZ0RP7"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    // Firebase初期化
+    const app = firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore(app);
 
+    // データの取得と表示
     let visitorData = [];
+    let filterWithLocation = false;
+    let filterWithoutLocation = false;
 
-    async function fetchAndRender() {
-      const snapshot = await getDocs(collection(db, "visitors"));
-      visitorData = [];
-      const list = document.getElementById("visitorList");
-      list.innerHTML = "";
+    // チェックボックスのイベントリスナー
+    document.getElementById("filterWithLocation").addEventListener("change", function() {
+      filterWithLocation = this.checked;
+      if (filterWithLocation) {
+        document.getElementById("filterWithoutLocation").checked = false;
+        filterWithoutLocation = false;
+      }
+      renderList();
+    });
 
-      snapshot.forEach(async docSnap => {
-        const data = docSnap.data();
-        const timestamp = new Date(data.timestamp || Date.now());
-        const dateStr = timestamp.toLocaleString("ja-JP", { dateStyle: "medium", timeStyle: "short" });
+    document.getElementById("filterWithoutLocation").addEventListener("change", function() {
+      filterWithoutLocation = this.checked;
+      if (filterWithoutLocation) {
+        document.getElementById("filterWithLocation").checked = false;
+        filterWithLocation = false;
+      }
+      renderList();
+    });
 
-        const coords = (data.latitude && data.longitude) ? `${data.latitude}, ${data.longitude}` : "位置情報なし";
-        const address = document.createElement("div");
-        address.innerText = "住所取得中...";
-
-        // 地名取得
-        if (data.latitude && data.longitude) {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${data.latitude}&lon=${data.longitude}&addressdetails=1`);
-          const json = await res.json();
-          address.innerText = json.display_name || "住所不明";
-        }
-
-        const map = document.createElement("iframe");
-        if (data.latitude && data.longitude) {
-          map.src = `https://maps.google.com/maps?q=${data.latitude},${data.longitude}&z=15&output=embed`;
-          map.style = "width:100%; height:200px; border:none;";
-        }
-
-        const nameInput = document.createElement("input");
-        nameInput.placeholder = "サブネーム";
-        nameInput.value = data.subname || "";
-        nameInput.addEventListener("change", async () => {
-          await updateDoc(doc(db, "visitors", docSnap.id), {
-            subname: nameInput.value
-          });
-          alert("サブネームを保存しました");
+    // データをFirebaseから取得してリストに表示
+    function fetchVisitorData() {
+      db.collection("visitors").get().then(snapshot => {
+        visitorData = [];
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          const listItem = createVisitorItem(doc.id, data);
+          visitorData.push({ id: doc.id, div: listItem });
         });
-
-        const checkBox = document.createElement("input");
-        checkBox.type = "checkbox";
-        checkBox.addEventListener("change", () => {
-          if (checkBox.checked) {
-            div.appendChild(map);
-          } else {
-            if (div.contains(map)) {
-              div.removeChild(map);
-            }
-          }
-        });
-
-        // UAの表示
-        const userAgent = data.user_agent || "UA情報なし";
-        const maxLength = 50; // 最初に表示する文字数
-        const truncatedUA = userAgent.length > maxLength ? userAgent.substring(0, maxLength) + '...' : userAgent;
-
-        const uaDiv = document.createElement("div");
-        uaDiv.innerHTML = `
-          <strong>UA:</strong> <span id="userAgent">${truncatedUA}</span>
-        `;
-
-        const toggleButton = document.createElement("button");
-        toggleButton.textContent = "続きを見る";
-        toggleButton.addEventListener("click", () => {
-          const userAgentText = document.getElementById("userAgent");
-          if (userAgentText.innerText === truncatedUA) {
-            userAgentText.innerText = userAgent; // 完全なUAを表示
-            toggleButton.textContent = "短くする"; // ボタンのテキスト変更
-          } else {
-            userAgentText.innerText = truncatedUA; // 文字列を短縮
-            toggleButton.textContent = "続きを見る"; // ボタンのテキスト変更
-          }
-        });
-
-        const div = document.createElement("div");
-        div.className = "entry";
-        div.innerHTML = `
-          <strong>LOT:</strong> ${data.lot || "不明"} <span>${data.subname || "サブネームなし"}</span><br>
-          <strong>日時:</strong> ${dateStr}<br>
-          <strong>IP:</strong> ${data.ip}<br>
-          <strong>座標:</strong> ${coords}<br>
-        `;
-        div.appendChild(address);
-        div.appendChild(checkBox);
-        div.appendChild(nameInput);
-        div.appendChild(uaDiv); // UA表示
-        div.appendChild(toggleButton); // ボタンを追加
-        list.appendChild(div);
-
-        visitorData.push({
-          lot: data.lot,
-          subname: data.subname,
-          timestamp: timestamp,
-          div: div,
-          address: address
-        });
+        renderList();
       });
     }
 
-    // 並べ替え関数
-    function sortListByLot() {
-      visitorData.sort((a, b) => (a.lot > b.lot) ? 1 : (a.lot < b.lot) ? -1 : 0);
-      renderList();
-    }
-
-    function sortListBySubname() {
-      visitorData.sort((a, b) => (a.subname > b.subname) ? 1 : (a.subname < b.subname) ? -1 : 0);
-      renderList();
-    }
-
-    function sortListByTime() {
-      visitorData.sort((a, b) => (a.timestamp > b.timestamp) ? -1 : (a.timestamp < b.timestamp) ? 1 : 0);
-      renderList();
-    }
-
+    // リストの表示
     function renderList() {
       const list = document.getElementById("visitorList");
       list.innerHTML = "";
       visitorData.forEach(item => {
+        const hasLocation = item.div.querySelector('.location').innerText !== "位置情報なし";
+        if ((filterWithLocation && !hasLocation) || (filterWithoutLocation && hasLocation)) {
+          return;
+        }
         list.appendChild(item.div);
       });
     }
 
-    window.addEventListener("DOMContentLoaded", async () => {
-      await fetchAndRender(); // データを先に取得して描画
-      document.getElementById("sortLot").addEventListener("click", sortListByLot);
-      document.getElementById("sortSubname").addEventListener("click", sortListBySubname);
-      document.getElementById("sortTime").addEventListener("click", sortListByTime);
-    });
+    // 各訪問者データを表示する要素を作成
+    function createVisitorItem(id, data) {
+      const div = document.createElement("div");
+      div.classList.add("visitorItem");
 
+      const name = document.createElement("div");
+      name.textContent = `訪問者: ${data.lot}`;
+      div.appendChild(name);
+
+      const address = document.createElement("div");
+      address.classList.add("location");
+      address.textContent = "住所取得中...";
+      div.appendChild(address);
+
+      // 住所取得処理
+      if (data.latitude && data.longitude) {
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${data.latitude}&lon=${data.longitude}&addressdetails=1`)
+          .then(res => res.json())
+          .then(json => {
+            address.textContent = json.display_name || "住所不明";
+          }).catch(() => {
+            address.textContent = "住所取得エラー";
+          });
+      } else {
+        address.textContent = "位置情報なし";
+      }
+
+      const deleteButton = document.createElement("button");
+      deleteButton.textContent = "削除";
+      deleteButton.addEventListener("click", () => {
+        if (confirm("本当に削除しますか？")) {
+          db.collection("visitors").doc(id).delete();
+          div.remove();
+        }
+      });
+      div.appendChild(deleteButton);
+
+      return div;
+    }
+
+    // ページ読み込み時にデータを取得
+    window.onload = fetchVisitorData;
   </script>
-
-  <style>
-    body {
-      background: #000;
-      color: #ccc;
-      font-family: sans-serif;
-      padding: 10px;
-    }
-    .entry {
-      background: #111;
-      border: 1px solid #444;
-      border-radius: 10px;
-      padding: 10px;
-      margin: 10px 0;
-    }
-    input {
-      width: 100%;
-      padding: 5px;
-      background: #222;
-      color: #fff;
-      border: 1px solid #555;
-      border-radius: 4px;
-      margin-top: 5px;
-    }
-    iframe {
-      margin-top: 10px;
-      border-radius: 8px;
-    }
-    label {
-      margin-top: 5px;
-      display: inline-block;
-    }
-    button {
-      background: #222;
-      color: #fff;
-      padding: 5px 10px;
-      margin-top: 10px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #444;
-    }
-  </style>
-</head>
-<body>
-  <h1>訪問者一覧</h1>
-  <button id="sortLot">LOT順で並べ替え</button>
-  <button id="sortSubname">サブネーム順で並べ替え</button>
-  <button id="sortTime">時間順で並べ替え</button>
-  <div id="visitorList">読み込み中...</div>
 </body>
 </html>
