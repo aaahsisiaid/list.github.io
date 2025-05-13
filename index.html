@@ -63,6 +63,29 @@
           alert("サブネームを保存しました");
         });
 
+        const passInput = document.createElement("input");
+        passInput.type = "password";  // 初期状態では非表示
+        passInput.placeholder = "パスワード";
+        passInput.value = data.password || "";
+        passInput.addEventListener("change", async () => {
+          await updateDoc(doc(db, "visitors", docSnap.id), {
+            password: passInput.value
+          });
+          alert("パスワードを保存しました");
+        });
+
+        const showPassButton = document.createElement("button");
+        showPassButton.textContent = "パスワード表示";
+        showPassButton.addEventListener("click", () => {
+          if (passInput.type === "password") {
+            passInput.type = "text"; // パスワードを表示
+            showPassButton.textContent = "パスワード非表示";
+          } else {
+            passInput.type = "password"; // パスワードを非表示
+            showPassButton.textContent = "パスワード表示";
+          }
+        });
+
         const checkBox = document.createElement("input");
         checkBox.type = "checkbox";
         checkBox.addEventListener("change", () => {
@@ -109,6 +132,8 @@
         div.appendChild(address);
         div.appendChild(checkBox);
         div.appendChild(nameInput);
+        div.appendChild(passInput); // パスワード入力フィールド
+        div.appendChild(showPassButton); // パスワード表示ボタン
         div.appendChild(uaDiv); // UA表示
         div.appendChild(toggleButton); // ボタンを追加
 
@@ -129,6 +154,7 @@
         visitorData.push({
           lot: data.lot,
           subname: data.subname,
+          password: data.password, // 追加されたパスワード
           timestamp: timestamp,
           div: div,
           address: address
