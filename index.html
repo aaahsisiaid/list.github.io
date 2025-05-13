@@ -44,17 +44,7 @@
         if (data.latitude && data.longitude) {
           const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${data.latitude}&lon=${data.longitude}&addressdetails=1`);
           const json = await res.json();
-          
-          // 詳細住所を構築
-          let displayAddress = '';
-          if (json.address) {
-            if (json.address.state) displayAddress += json.address.state;
-            if (json.address.city) displayAddress += json.address.city;
-            if (json.address.suburb) displayAddress += json.address.suburb;
-            if (json.address.road) displayAddress += json.address.road;
-            if (json.address.house_number) displayAddress += json.address.house_number;
-          }
-          address.innerText = displayAddress || "住所不明";
+          address.innerText = json.display_name || "住所不明";
         }
 
         const map = document.createElement("iframe");
@@ -248,7 +238,6 @@
   </style>
 </head>
 <body>
-  
   <h1>訪問者一覧</h1>
   <button id="sortLot">LOT順で並べ替え</button>
   <button id="sortSubname">サブネーム順で並べ替え</button>
